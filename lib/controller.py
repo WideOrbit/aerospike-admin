@@ -233,6 +233,7 @@ class ShowController(CommandController):
             , 'statistics':ShowStatisticsController
             , 'latency':ShowLatencyController
             , 'distribution':ShowDistributionController
+            ,  'health':ShowHealthController
         }
 
         self.modifiers = set()
@@ -415,6 +416,55 @@ class ShowConfigController(CommandController):
         self.view.showConfig("XDR Configuration", xdr_filtered, self.cluster
                              , **self.mods)
 
+@CommandHelp('"show health" is used to display Aerospike configuration health')
+class ShowHealthController(CommandController):
+    def __init__(self):
+        self.modifiers = set(['with', 'like'])
+    
+    @CommandHelp('Displays namespace health')
+    def _do_default(self, line):
+        self.do_namespace(line)   
+        pass
+    
+    def get_namespace_health(self, namespace_config):
+        pass
+    
+    @CommandHelp('Displays namespace health')
+    def do_namespace(self, line):
+        health_params = [   'min-avail-pct', 
+                            'stop-writes',
+                            'hwm-breached',
+                            'memory-size',
+                            'high-water-disk-pct',
+                            'high-water-memory-pct',
+                            'stop-writes-pct',
+                            'repl-factor',
+                            'set-evicted-objects'
+                        ]
+        namespaces = self.cluster.infoNamespaces(nodes=self.nodes)
+
+        namespaces = namespaces.values()
+        namespace_set = set()
+        namespace_stats = dict()
+        for namespace in namespaces:
+            if isinstance(namespace, Exception):
+                continue
+            namespace_set.update(namespace)
+
+        for namespace in sorted(namespace_set):
+            ns_stats = self.cluster.infoNamespaceStatistics(namespace
+                                                            , nodes=self.nodes)
+            for node, params in ns_stats.items():
+                if isinstance(params, Exception):
+                    del ns_stats[node]
+                else:
+                    for param in params.keys():
+                        if param not in health_params:
+                            del ns_stats[node][param]
+            namespace_stats[namespace] = ns_stats
+        print namespace_stats 
+    
+        
 @CommandHelp('Displays statistics for Aerospike components.')
 class ShowStatisticsController(CommandController):
     def __init__(self):
