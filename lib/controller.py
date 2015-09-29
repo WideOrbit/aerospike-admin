@@ -426,8 +426,61 @@ class ShowHealthController(CommandController):
         self.do_namespace(line)   
         pass
     
-    def get_namespace_health(self, namespace_config):
-        pass
+    @CommandHelp('get namespaces health dictionary')
+    def get_namespaces_health(self, namespace_config = ''):
+        namespaces_health = dict()
+        for ns, nodes in namespace_config.items():
+            health_params = {   'min-avail-pct' : 'OK',
+                                'stop-writes' : 'OK',
+                                'hwm-breached' : 'OK',
+                                'memory-size' : 'OK',
+                                'high-water-disk-pct' : 'OK',
+                                'high-water-memory-pct' : 'OK',
+                                'stop-writes-pct' : 'OK',
+                                'repl-factor' : 'OK',
+                                'set-evicted-objects' : 'OK'
+                            }
+            memory_size = ''
+            high_water_disk_pct = ''
+            high_water_memory_pct = ''
+            stop_wirtes_pct = ''
+            repl_factor = ''
+            set_evicted_objects = ''
+            min_avail_pct = ''
+
+            for i, ip in enumerate(nodes.keys()):
+                # TODO: check for missing key.
+                if i == 0:
+                    memory_size = namespace_config[ns][ip].get('memory-size')
+                    high_water_disk_pct = namespace_config[ns][ip].get('high-water-disk-pct')
+                    high_water_memory_pct = namespace_config[ns][ip].get('high-water-memory-pct')
+                    stop_wirtes_pct = namespace_config[ns][ip].get('stop-wirtes-pct')
+                    repl_factor = namespace_config[ns][ip].get('repl-factor')
+                    set_evicted_objects = namespace_config[ns][ip].get('set-evicted-objects')
+                    min_avail_pct = namespace_config[ns][ip].get('min-avail-pct')
+
+                def update_health(param, comparator, result):
+                    if namespace_config[ns][ip].get(param) != comparator:
+                        health_params[param] = result
+                try:
+                    if int(min_avail_pct) < 20 and int(min_avail_pct) > 5:
+                        health_params['min-avail-pct'] = 'WARNING'
+                    elif not int(min_avail_pct)  > 20:
+                        health_params['min-avail-pct'] = 'CRITICAL'
+                except:
+                    # TODO: Missing 'min-avail-pct' key entry for any of the node
+                    pass
+
+                update_health('stop-writes', 'false', 'CRITICAL')
+                update_health('hwm-breached', 'false', 'WARNING')
+                update_health('memory-size', memory_size, 'WARNING')
+                update_health('high-water-disk-pct', high_water_disk_pct, 'WARNING')
+                update_health('high-water-memory-pct', high_water_memory_pct, 'WARNING')
+                update_health('stop-wirtes-pct', stop_wirtes_pct, 'WARNING')
+                update_health('repl-factor', repl_factor, 'CRITICAL')
+                update_health('set-evicted-objects', set_evicted_objects, 'WARNING')
+            namespaces_health[ns] = health_params
+        return namespaces_health
     
     @CommandHelp('Displays namespace health')
     def do_namespace(self, line):
@@ -462,7 +515,10 @@ class ShowHealthController(CommandController):
                         if param not in health_params:
                             del ns_stats[node][param]
             namespace_stats[namespace] = ns_stats
-        print namespace_stats 
+        ns_health = self.get_namespaces_health(namespace_stats)
+        for ns, configs in ns_health.iteritems():
+            self.view.showHealth("%s Namespace Health"%(ns)
+                                 , configs, self.cluster, **self.mods)
     
         
 @CommandHelp('Displays statistics for Aerospike components.')

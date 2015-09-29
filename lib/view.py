@@ -466,6 +466,24 @@ class CliView(object):
         CliView.showConfig(*args, **kwargs)
 
     @staticmethod
+    def showHealth(title, health_configs, cluster, like=None, **ignore):
+        column_names = health_configs.keys()
+        column_names = sorted(column_names)
+        if like:
+            likes = CliView.compileLikes(like)
+
+            column_names = filter(likes.search, column_names)
+
+        if len(column_names) == 0:
+            return ''
+        t = Table(title
+                  , column_names
+                  , title_format=TitleFormats.noChange
+                  , style=Styles.VERTICAL)
+        t.insertRow(health_configs)
+        print t
+
+    @staticmethod
     def asinfo(results, line_sep, cluster, **kwargs):
         like = set(kwargs['like'])
         for node_id, value in results.iteritems():
