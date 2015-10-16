@@ -17,6 +17,7 @@ from lib import util
 import time, os, sys, platform, shutil, urllib2, socket
 from distutils.version import StrictVersion
 import zipfile
+import copy
 
 def flip_keys(orig_data):
     new_data = {}
@@ -418,84 +419,98 @@ class ShowConfigController(CommandController):
 
 @CommandHelp('"show health" is used to display Aerospike configuration health')
 class ShowHealthController(CommandController):
+    FREE_PCT_MEMORY = 'free-pct-memory'
+    MIN_AVAIL_PCT = 'min-avail-pct'
+    STOP_WRITES = 'stop-writes'
+    HWM_BREACHED = 'hwm-breached'
+    MEMORY_SIZE = 'memory-size'
+    HIGH_WATER_DISK_PCT = 'high-water-disk-pct'
+    HIGH_WATER_MEMEORY_PCT = 'high-water-memory-pct'
+    STOP_WRITES_PCT = 'stop-writes-pct'
+    REPL_FACTOR = 'repl-factor'
+    SET_EVICTED_OBJECTS = 'set-evicted-objects'
+    HWM_WARN_CHECK_PCT = 10
+
+    NS_HEALTH_PARAMS_LOOKUP = [
+                                FREE_PCT_MEMORY,
+                                HIGH_WATER_DISK_PCT,
+                                HIGH_WATER_MEMEORY_PCT,
+                                HWM_BREACHED,
+                                MEMORY_SIZE,
+                                MIN_AVAIL_PCT,
+                                REPL_FACTOR,
+                                STOP_WRITES_PCT,
+                                STOP_WRITES,
+                                SET_EVICTED_OBJECTS
+                              ]
+    NS_HEALTH_PARAMS = {
+                        HIGH_WATER_DISK_PCT : 'OK',
+                        HIGH_WATER_MEMEORY_PCT : 'OK',
+                        HWM_BREACHED : 'OK',
+                        MIN_AVAIL_PCT : 'OK',
+                        MEMORY_SIZE : 'OK',
+                        REPL_FACTOR : 'OK',
+                        STOP_WRITES_PCT : 'OK',
+                        STOP_WRITES : 'OK',
+                        SET_EVICTED_OBJECTS : 'OK',
+                       }
+
     def __init__(self):
         self.modifiers = set(['with', 'like'])
-    
-    @CommandHelp('Displays namespace health')
+
+    @CommandHelp('Displays cluster health')
     def _do_default(self, line):
         self.do_namespace(line)   
         pass
-    
-    @CommandHelp('get namespaces health dictionary')
+
     def get_namespaces_health(self, namespace_config = ''):
         namespaces_health = dict()
         for ns, nodes in namespace_config.items():
-            health_params = {   'min-avail-pct' : 'OK',
-                                'stop-writes' : 'OK',
-                                'hwm-breached' : 'OK',
-                                'memory-size' : 'OK',
-                                'high-water-disk-pct' : 'OK',
-                                'high-water-memory-pct' : 'OK',
-                                'stop-writes-pct' : 'OK',
-                                'repl-factor' : 'OK',
-                                'set-evicted-objects' : 'OK'
-                            }
-            memory_size = ''
-            high_water_disk_pct = ''
-            high_water_memory_pct = ''
-            stop_wirtes_pct = ''
-            repl_factor = ''
-            set_evicted_objects = ''
-            min_avail_pct = ''
-
-            for i, ip in enumerate(nodes.keys()):
-                # TODO: check for missing key.
-                if i == 0:
-                    memory_size = namespace_config[ns][ip].get('memory-size')
-                    high_water_disk_pct = namespace_config[ns][ip].get('high-water-disk-pct')
-                    high_water_memory_pct = namespace_config[ns][ip].get('high-water-memory-pct')
-                    stop_wirtes_pct = namespace_config[ns][ip].get('stop-wirtes-pct')
-                    repl_factor = namespace_config[ns][ip].get('repl-factor')
-                    set_evicted_objects = namespace_config[ns][ip].get('set-evicted-objects')
-                    min_avail_pct = namespace_config[ns][ip].get('min-avail-pct')
-
+            is_first = True
+            namespaces_health[ns] = dict()
+            for ip, params in nodes.items():
+                health_params = copy.deepcopy(ShowHealthController.NS_HEALTH_PARAMS)
+                if is_first:
+                    high_water_disk_pct = params.get(ShowHealthController.HIGH_WATER_DISK_PCT)
+                    memory_size =  params.get(ShowHealthController.MEMORY_SIZE)
+                    repl_factor =  params.get(ShowHealthController.REPL_FACTOR)
+                    stop_writes_pct =  params.get(ShowHealthController.STOP_WRITES_PCT)
+                    set_evicted_objects = params.get(ShowHealthController.SET_EVICTED_OBJECTS)
+                    is_first = False
                 def update_health(param, comparator, result):
-                    if namespace_config[ns][ip].get(param) != comparator:
+                    if params.get(param) != comparator:
                         health_params[param] = result
-                try:
-                    if int(min_avail_pct) < 20 and int(min_avail_pct) > 5:
-                        health_params['min-avail-pct'] = 'WARNING'
-                    elif not int(min_avail_pct)  > 20:
-                        health_params['min-avail-pct'] = 'CRITICAL'
-                except:
-                    # TODO: Missing 'min-avail-pct' key entry for any of the node
-                    pass
+                update_health(ShowHealthController.HIGH_WATER_DISK_PCT, high_water_disk_pct, 'WARNING')
+#                 update_health(ShowHealthController.HIGH_WATER_MEMEORY_PCT, high_water_memory_pct, 'WARNING')
+                update_health(ShowHealthController.HWM_BREACHED, 'false', 'WARNING')
+                update_health(ShowHealthController.MEMORY_SIZE, memory_size, 'WARNING')
+                update_health(ShowHealthController.REPL_FACTOR, repl_factor, 'CRITICAL')
+                update_health(ShowHealthController.STOP_WRITES, 'false', 'CRITICAL')
+                update_health(ShowHealthController.STOP_WRITES_PCT, stop_writes_pct, 'WARNING')
+                update_health(ShowHealthController.SET_EVICTED_OBJECTS, set_evicted_objects, 'WARNING')
 
-                update_health('stop-writes', 'false', 'CRITICAL')
-                update_health('hwm-breached', 'false', 'WARNING')
-                update_health('memory-size', memory_size, 'WARNING')
-                update_health('high-water-disk-pct', high_water_disk_pct, 'WARNING')
-                update_health('high-water-memory-pct', high_water_memory_pct, 'WARNING')
-                update_health('stop-wirtes-pct', stop_wirtes_pct, 'WARNING')
-                update_health('repl-factor', repl_factor, 'CRITICAL')
-                update_health('set-evicted-objects', set_evicted_objects, 'WARNING')
-            namespaces_health[ns] = health_params
+                high_water_memory_pct = params.get(ShowHealthController.HIGH_WATER_MEMEORY_PCT)
+                min_avail_pct = params.get(ShowHealthController.MIN_AVAIL_PCT)
+                if high_water_memory_pct is not None:
+                    high_water_memory_pct = int(high_water_memory_pct)
+                    used_memory_pct = 100 - int(params[ShowHealthController.FREE_PCT_MEMORY])
+                    hwm_warn_range = range(high_water_memory_pct - (high_water_memory_pct * ShowHealthController.HWM_WARN_CHECK_PCT / 100) , high_water_memory_pct)
+                    if used_memory_pct >= high_water_memory_pct:
+                        health_params[ShowHealthController.HIGH_WATER_MEMEORY_PCT] = 'CRITICAL'
+                    elif high_water_memory_pct > 65 or used_memory_pct in hwm_warn_range:
+                        health_params[ShowHealthController.HIGH_WATER_MEMEORY_PCT] = 'WARNING'
+                if min_avail_pct is not None:
+                    min_avail_pct = int(min_avail_pct)
+                    if min_avail_pct < 5:
+                            health_params[ShowHealthController.MIN_AVAIL_PCT] = 'CRITICAL'
+                    elif min_avail_pct <= 20 and min_avail_pct >= 5:
+                            health_params[ShowHealthController.MIN_AVAIL_PCT] = 'WARNING'
+                namespaces_health[ns][ip] = health_params
         return namespaces_health
-    
+
     @CommandHelp('Displays namespace health')
     def do_namespace(self, line):
-        health_params = [   'min-avail-pct', 
-                            'stop-writes',
-                            'hwm-breached',
-                            'memory-size',
-                            'high-water-disk-pct',
-                            'high-water-memory-pct',
-                            'stop-writes-pct',
-                            'repl-factor',
-                            'set-evicted-objects'
-                        ]
         namespaces = self.cluster.infoNamespaces(nodes=self.nodes)
-
         namespaces = namespaces.values()
         namespace_set = set()
         namespace_stats = dict()
@@ -512,15 +527,14 @@ class ShowHealthController(CommandController):
                     del ns_stats[node]
                 else:
                     for param in params.keys():
-                        if param not in health_params:
+                        if param not in ShowHealthController.NS_HEALTH_PARAMS_LOOKUP:
                             del ns_stats[node][param]
             namespace_stats[namespace] = ns_stats
         ns_health = self.get_namespaces_health(namespace_stats)
         for ns, configs in ns_health.iteritems():
             self.view.showHealth("%s Namespace Health"%(ns)
                                  , configs, self.cluster, **self.mods)
-    
-        
+
 @CommandHelp('Displays statistics for Aerospike components.')
 class ShowStatisticsController(CommandController):
     def __init__(self):
