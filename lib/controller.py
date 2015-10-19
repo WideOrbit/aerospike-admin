@@ -460,7 +460,9 @@ class ShowHealthController(CommandController):
 
     @CommandHelp('Displays cluster health')
     def _do_default(self, line):
-        self.do_namespace(line)   
+#         self.do_namespace(line)
+#         self.do_log(line)
+        self.do_network(line)
         pass
 
     def get_namespaces_health(self, namespace_config = ''):
@@ -508,7 +510,7 @@ class ShowHealthController(CommandController):
                 namespaces_health[ns][ip] = health_params
         return namespaces_health
 
-    @CommandHelp('Displays namespace health')
+    @CommandHelp('Displays namespace health of cluster')
     def do_namespace(self, line):
         namespaces = self.cluster.infoNamespaces(nodes=self.nodes)
         namespaces = namespaces.values()
@@ -534,6 +536,44 @@ class ShowHealthController(CommandController):
         for ns, configs in ns_health.iteritems():
             self.view.showHealth("%s Namespace Health"%(ns)
                                  , configs, self.cluster, **self.mods)
+
+    def get_logs_health(self, logs_config = ''):
+        KEY_NAME = 'contexts'
+        log_health = dict()
+        log_health_missing = dict()
+        for ip, params in logs_config.items():
+            context_dict = {KEY_NAME : 'OK'}
+            context_missing = {}
+            for param in params.split(';'):
+                context_info =  param.rsplit(':', 1)
+                if context_info[1] != 'INFO':
+                    context_dict[KEY_NAME] = 'WARNING'
+                    context_missing[context_info[0]] = context_info[1]
+            log_health[ip]= context_dict
+            log_health_missing[ip] = context_missing
+        return(log_health, log_health_missing)
+
+    @CommandHelp('Displays log health of cluster')
+    def do_log(self,line):
+        logs_config = self.cluster._callNodeMethod(self.nodes, "info", "log/0")
+        for log, value in logs_config.items():
+            if isinstance(value, Exception):
+                del logs_config[log]
+        health, health_missing = self.get_logs_health(logs_config)
+        self.view.showHealth('Logs Health', health, self.cluster, **self.mods)
+#         TODO: develop printing logic for health_missing
+#         print health_missing
+
+    def get_network_health(self, network_config = ''):
+        pass
+
+    @CommandHelp('Displays Network health of cluster')
+    def do_network(self, line):
+        network_config = self.cluster._callNodeMethod(self.nodes, "info", "get-config:context=network.heartbeat")
+        for _node, params in network_config.item():
+            if isinstance(params, Exception):
+                del network_config[_node]
+        print network_config
 
 @CommandHelp('Displays statistics for Aerospike components.')
 class ShowStatisticsController(CommandController):
