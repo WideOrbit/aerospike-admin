@@ -429,9 +429,13 @@ class ShowHealthController(CommandController):
     STOP_WRITES_PCT = 'stop-writes-pct'
     REPL_FACTOR = 'repl-factor'
     SET_EVICTED_OBJECTS = 'set-evicted-objects'
+    TYPE = 'type'
     HWM_WARN_CHECK_PCT = 10
+    HEARTBEAT_INTERVAL = 'heartbeat-interval'
+    HEARTBEAT_TIMEOUT = 'heartbeat-timeout'
+    PROTO_FD_MAX = 'proto-fd-max'
 
-    NS_HEALTH_PARAMS_LOOKUP = [
+    NAMESPACE_LOOKUP = [
                                 FREE_PCT_MEMORY,
                                 HIGH_WATER_DISK_PCT,
                                 HIGH_WATER_MEMEORY_PCT,
@@ -441,9 +445,10 @@ class ShowHealthController(CommandController):
                                 REPL_FACTOR,
                                 STOP_WRITES_PCT,
                                 STOP_WRITES,
-                                SET_EVICTED_OBJECTS
+                                SET_EVICTED_OBJECTS,
+                                TYPE
                               ]
-    NS_HEALTH_PARAMS = {
+    NAMESPACE_PARAMS = {
                         HIGH_WATER_DISK_PCT : 'OK',
                         HIGH_WATER_MEMEORY_PCT : 'OK',
                         HWM_BREACHED : 'OK',
@@ -453,15 +458,22 @@ class ShowHealthController(CommandController):
                         STOP_WRITES_PCT : 'OK',
                         STOP_WRITES : 'OK',
                         SET_EVICTED_OBJECTS : 'OK',
+                        TYPE: 'OK'
                        }
+
+    NETWORK_PARAMS = {
+                      HEARTBEAT_INTERVAL : 'OK',
+                      HEARTBEAT_TIMEOUT : 'OK',
+                      PROTO_FD_MAX : 'OK'
+                     }
 
     def __init__(self):
         self.modifiers = set(['with', 'like'])
 
     @CommandHelp('Displays cluster health')
     def _do_default(self, line):
-#         self.do_namespace(line)
-#         self.do_log(line)
+        self.do_namespace(line)
+        self.do_log(line)
         self.do_network(line)
         pass
 
@@ -471,13 +483,14 @@ class ShowHealthController(CommandController):
             is_first = True
             namespaces_health[ns] = dict()
             for ip, params in nodes.items():
-                health_params = copy.deepcopy(ShowHealthController.NS_HEALTH_PARAMS)
+                health_params = copy.deepcopy(ShowHealthController.NAMESPACE_PARAMS)
                 if is_first:
                     high_water_disk_pct = params.get(ShowHealthController.HIGH_WATER_DISK_PCT)
                     memory_size =  params.get(ShowHealthController.MEMORY_SIZE)
                     repl_factor =  params.get(ShowHealthController.REPL_FACTOR)
                     stop_writes_pct =  params.get(ShowHealthController.STOP_WRITES_PCT)
                     set_evicted_objects = params.get(ShowHealthController.SET_EVICTED_OBJECTS)
+                    type = params.get(ShowHealthController.TYPE)
                     is_first = False
                 def update_health(param, comparator, result):
                     if params.get(param) != comparator:
@@ -490,7 +503,8 @@ class ShowHealthController(CommandController):
                 update_health(ShowHealthController.STOP_WRITES, 'false', 'CRITICAL')
                 update_health(ShowHealthController.STOP_WRITES_PCT, stop_writes_pct, 'WARNING')
                 update_health(ShowHealthController.SET_EVICTED_OBJECTS, set_evicted_objects, 'WARNING')
-
+                update_health(ShowHealthController.TYPE, type, 'WARNING')
+                
                 high_water_memory_pct = params.get(ShowHealthController.HIGH_WATER_MEMEORY_PCT)
                 min_avail_pct = params.get(ShowHealthController.MIN_AVAIL_PCT)
                 if high_water_memory_pct is not None:
@@ -529,7 +543,7 @@ class ShowHealthController(CommandController):
                     del ns_stats[node]
                 else:
                     for param in params.keys():
-                        if param not in ShowHealthController.NS_HEALTH_PARAMS_LOOKUP:
+                        if param not in ShowHealthController.NAMESPACE_LOOKUP:
                             del ns_stats[node][param]
             namespace_stats[namespace] = ns_stats
         ns_health = self.get_namespaces_health(namespace_stats)
@@ -564,16 +578,47 @@ class ShowHealthController(CommandController):
 #         TODO: develop printing logic for health_missing
 #         print health_missing
 
-    def get_network_health(self, network_config = ''):
-        pass
+    def get_network_health(self, network_config = None):
+        network_health = dict()
+        is_first = True
+        for ip, params in network_config.items():
+            if params:
+                network_health[ip] = dict()
+                health_params = copy.deepcopy(ShowHealthController.NETWORK_PARAMS)
+                if is_first:
+                   heartbeat_interval = params.get(ShowHealthController.HEARTBEAT_INTERVAL)
+                   heartbeat_timeout =  params.get(ShowHealthController.HEARTBEAT_TIMEOUT)
+                   proto_fd_max = params.get(ShowHealthController.PROTO_FD_MAX)
+                   is_first = False
+                def update_health(param, comparator, result):
+                    if params.get(param) != comparator:
+                        health_params[param] = result
+                update_health(ShowHealthController.HEARTBEAT_INTERVAL, heartbeat_interval, 'CRITICAL')
+                update_health(ShowHealthController.HEARTBEAT_TIMEOUT, heartbeat_timeout, 'CRITICAL')
+                update_health(ShowHealthController.PROTO_FD_MAX, proto_fd_max, 'CRITICAL')
+                network_health[ip] = health_params
+        return network_health
 
     @CommandHelp('Displays Network health of cluster')
     def do_network(self, line):
-        network_config = self.cluster._callNodeMethod(self.nodes, "info", "get-config:context=network.heartbeat")
-        for _node, params in network_config.item():
-            if isinstance(params, Exception):
-                del network_config[_node]
-        print network_config
+        network_config = self.cluster.infoGetConfig(nodes=self.nodes
+                                                , stanza='network.heartbeat')
+        service_configs = self.cluster.infoGetConfig(nodes=self.nodes
+                                                     , stanza='service')
+
+        for node in network_config:
+            if isinstance(network_config[node], Exception):
+                network_config[node] = {}
+            else:
+                network_config[node] = network_config[node]['network.heartbeat']
+
+        for node in service_configs:
+            if isinstance(service_configs[node], Exception):
+                service_configs[node] = {}
+            else:
+                network_config[node].update(service_configs[node]['service'])
+        network_health = self.get_network_health(network_config)
+        self.view.showHealth('Network Health', network_health, self.cluster, **self.mods)
 
 @CommandHelp('Displays statistics for Aerospike components.')
 class ShowStatisticsController(CommandController):
