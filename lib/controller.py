@@ -435,19 +435,6 @@ class ShowHealthController(CommandController):
     HEARTBEAT_TIMEOUT = 'heartbeat-timeout'
     PROTO_FD_MAX = 'proto-fd-max'
 
-    NAMESPACE_LOOKUP = [
-                                FREE_PCT_MEMORY,
-                                HIGH_WATER_DISK_PCT,
-                                HIGH_WATER_MEMEORY_PCT,
-                                HWM_BREACHED,
-                                MEMORY_SIZE,
-                                MIN_AVAIL_PCT,
-                                REPL_FACTOR,
-                                STOP_WRITES_PCT,
-                                STOP_WRITES,
-                                SET_EVICTED_OBJECTS,
-                                TYPE
-                              ]
     NAMESPACE_PARAMS = {
                         HIGH_WATER_DISK_PCT : 'OK',
                         HIGH_WATER_MEMEORY_PCT : 'OK',
@@ -475,53 +462,63 @@ class ShowHealthController(CommandController):
         self.do_namespace(line)
         self.do_log(line)
         self.do_network(line)
+        self.do_xdr(line)
         pass
 
     def get_namespaces_health(self, namespace_config = ''):
         namespaces_health = dict()
         for ns, nodes in namespace_config.items():
+            broken = {}
             is_first = True
             namespaces_health[ns] = dict()
             for ip, params in nodes.items():
-                health_params = copy.deepcopy(ShowHealthController.NAMESPACE_PARAMS)
-                if is_first:
-                    high_water_disk_pct = params.get(ShowHealthController.HIGH_WATER_DISK_PCT)
-                    memory_size =  params.get(ShowHealthController.MEMORY_SIZE)
-                    repl_factor =  params.get(ShowHealthController.REPL_FACTOR)
-                    stop_writes_pct =  params.get(ShowHealthController.STOP_WRITES_PCT)
-                    set_evicted_objects = params.get(ShowHealthController.SET_EVICTED_OBJECTS)
-                    type = params.get(ShowHealthController.TYPE)
-                    is_first = False
-                def update_health(param, comparator, result):
-                    if params.get(param) != comparator:
-                        health_params[param] = result
-                update_health(ShowHealthController.HIGH_WATER_DISK_PCT, high_water_disk_pct, 'WARNING')
-#                 update_health(ShowHealthController.HIGH_WATER_MEMEORY_PCT, high_water_memory_pct, 'WARNING')
-                update_health(ShowHealthController.HWM_BREACHED, 'false', 'WARNING')
-                update_health(ShowHealthController.MEMORY_SIZE, memory_size, 'WARNING')
-                update_health(ShowHealthController.REPL_FACTOR, repl_factor, 'CRITICAL')
-                update_health(ShowHealthController.STOP_WRITES, 'false', 'CRITICAL')
-                update_health(ShowHealthController.STOP_WRITES_PCT, stop_writes_pct, 'WARNING')
-                update_health(ShowHealthController.SET_EVICTED_OBJECTS, set_evicted_objects, 'WARNING')
-                update_health(ShowHealthController.TYPE, type, 'WARNING')
-                
-                high_water_memory_pct = params.get(ShowHealthController.HIGH_WATER_MEMEORY_PCT)
-                min_avail_pct = params.get(ShowHealthController.MIN_AVAIL_PCT)
-                if high_water_memory_pct is not None:
-                    high_water_memory_pct = int(high_water_memory_pct)
-                    used_memory_pct = 100 - int(params[ShowHealthController.FREE_PCT_MEMORY])
-                    hwm_warn_range = range(high_water_memory_pct - (high_water_memory_pct * ShowHealthController.HWM_WARN_CHECK_PCT / 100) , high_water_memory_pct)
-                    if used_memory_pct >= high_water_memory_pct:
-                        health_params[ShowHealthController.HIGH_WATER_MEMEORY_PCT] = 'CRITICAL'
-                    elif high_water_memory_pct > 65 or used_memory_pct in hwm_warn_range:
-                        health_params[ShowHealthController.HIGH_WATER_MEMEORY_PCT] = 'WARNING'
-                if min_avail_pct is not None:
-                    min_avail_pct = int(min_avail_pct)
-                    if min_avail_pct < 5:
-                            health_params[ShowHealthController.MIN_AVAIL_PCT] = 'CRITICAL'
-                    elif min_avail_pct <= 20 and min_avail_pct >= 5:
-                            health_params[ShowHealthController.MIN_AVAIL_PCT] = 'WARNING'
-                namespaces_health[ns][ip] = health_params
+                if params:
+                    health_params = copy.deepcopy(ShowHealthController.NAMESPACE_PARAMS)
+                    if is_first:
+                        high_water_disk_pct = params.get(ShowHealthController.HIGH_WATER_DISK_PCT)
+                        memory_size =  params.get(ShowHealthController.MEMORY_SIZE)
+                        repl_factor =  params.get(ShowHealthController.REPL_FACTOR)
+                        stop_writes_pct =  params.get(ShowHealthController.STOP_WRITES_PCT)
+                        set_evicted_objects = params.get(ShowHealthController.SET_EVICTED_OBJECTS)
+                        type = params.get(ShowHealthController.TYPE)
+                        is_first = False
+                    def update_health(param, comparator, result):
+                        if params.get(param) != comparator:
+                            if ip not in broken:
+                                broken[ip] = {}
+                            broken[ip][param] =  result
+
+                    update_health(ShowHealthController.HIGH_WATER_DISK_PCT, high_water_disk_pct, 'WARNING')
+    #                 update_health(ShowHealthController.HIGH_WATER_MEMEORY_PCT, high_water_memory_pct, 'WARNING')
+                    update_health(ShowHealthController.HWM_BREACHED, 'false', 'WARNING')
+                    update_health(ShowHealthController.MEMORY_SIZE, memory_size, 'WARNING')
+                    update_health(ShowHealthController.REPL_FACTOR, repl_factor, 'CRITICAL')
+                    update_health(ShowHealthController.STOP_WRITES, 'false', 'CRITICAL')
+                    update_health(ShowHealthController.STOP_WRITES_PCT, stop_writes_pct, 'WARNING')
+                    update_health(ShowHealthController.SET_EVICTED_OBJECTS, set_evicted_objects, 'WARNING')
+                    update_health(ShowHealthController.TYPE, type, 'WARNING')
+
+                    high_water_memory_pct = params.get(ShowHealthController.HIGH_WATER_MEMEORY_PCT)
+                    min_avail_pct = params.get(ShowHealthController.MIN_AVAIL_PCT)
+                    if high_water_memory_pct is not None:
+                        high_water_memory_pct = int(high_water_memory_pct)
+                        used_memory_pct = 100 - int(params[ShowHealthController.FREE_PCT_MEMORY])
+                        hwm_warn_range = range(high_water_memory_pct - (high_water_memory_pct * ShowHealthController.HWM_WARN_CHECK_PCT / 100) , high_water_memory_pct)
+                        if used_memory_pct >= high_water_memory_pct:
+                            health_params[ShowHealthController.HIGH_WATER_MEMEORY_PCT] = 'CRITICAL'
+                        elif high_water_memory_pct > 65 or used_memory_pct in hwm_warn_range:
+                            health_params[ShowHealthController.HIGH_WATER_MEMEORY_PCT] = 'WARNING'
+                    if min_avail_pct is not None:
+                        min_avail_pct = int(min_avail_pct)
+                        if min_avail_pct < 5:
+                                health_params[ShowHealthController.MIN_AVAIL_PCT] = 'CRITICAL'
+                        elif min_avail_pct <= 20 and min_avail_pct >= 5:
+                                health_params[ShowHealthController.MIN_AVAIL_PCT] = 'WARNING'
+                    namespaces_health[ns][ip] = health_params
+            for _ip, _params in namespaces_health[ns].items():
+                for broken_ip, broken_param in broken.items():
+                    for param, status in broken_param.items():
+                        _params[param] = status
         return namespaces_health
 
     @CommandHelp('Displays namespace health of cluster')
@@ -534,17 +531,12 @@ class ShowHealthController(CommandController):
             if isinstance(namespace, Exception):
                 continue
             namespace_set.update(namespace)
-
         for namespace in sorted(namespace_set):
             ns_stats = self.cluster.infoNamespaceStatistics(namespace
                                                             , nodes=self.nodes)
             for node, params in ns_stats.items():
                 if isinstance(params, Exception):
-                    del ns_stats[node]
-                else:
-                    for param in params.keys():
-                        if param not in ShowHealthController.NAMESPACE_LOOKUP:
-                            del ns_stats[node][param]
+                    ns_stats[node] = {}
             namespace_stats[namespace] = ns_stats
         ns_health = self.get_namespaces_health(namespace_stats)
         for ns, configs in ns_health.iteritems():
@@ -619,6 +611,21 @@ class ShowHealthController(CommandController):
                 network_config[node].update(service_configs[node]['service'])
         network_health = self.get_network_health(network_config)
         self.view.showHealth('Network Health', network_health, self.cluster, **self.mods)
+
+    def get_xdr_health(self, xdr_config):
+        pass
+
+    @CommandHelp('Displays xdr health')
+    def do_xdr(self, line):
+        xdr_stats = self.cluster.infoXDRStatistics(nodes=self.nodes)
+        for node in xdr_stats:
+            if isinstance(xdr_stats[node], Exception):
+                xdr_stats[node] = {}
+#         print xdr_stats
+        self.view.showStats("XDR Statistics"
+                            , xdr_stats
+                            , self.cluster
+                            , **self.mods)
 
 @CommandHelp('Displays statistics for Aerospike components.')
 class ShowStatisticsController(CommandController):
