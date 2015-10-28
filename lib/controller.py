@@ -437,6 +437,8 @@ class ShowHealthController(CommandController):
         self.HEARTBEAT_INTERVAL = 'heartbeat-interval'
         self.HEARTBEAT_TIMEOUT = 'heartbeat-timeout'
         self.PROTO_FD_MAX = 'proto-fd-max'
+        self.WARNING = 'WARNING'
+        self.CRITICAL = 'CRITICAL'
 
         self.NAMESPACE_PARAMS = {
                             self.HIGH_WATER_DISK_PCT : 'OK',
@@ -480,7 +482,7 @@ class ShowHealthController(CommandController):
                         repl_factor =  params.get(self.REPL_FACTOR)
                         stop_writes_pct =  params.get(self.STOP_WRITES_PCT)
                         set_evicted_objects = params.get(self.SET_EVICTED_OBJECTS)
-                        type = params.get(self.TYPE)
+                        _type = params.get(self.TYPE)
                         is_first = False
                     def update_health(param, comparator, result):
                         if params.get(param) != comparator:
@@ -488,15 +490,15 @@ class ShowHealthController(CommandController):
                                 broken[ip] = {}
                             broken[ip][param] =  result
 
-                    update_health(self.HIGH_WATER_DISK_PCT, high_water_disk_pct, 'WARNING')
-    #                 update_health(self.HIGH_WATER_MEMEORY_PCT, high_water_memory_pct, 'WARNING')
-                    update_health(self.HWM_BREACHED, 'false', 'WARNING')
-                    update_health(self.MEMORY_SIZE, memory_size, 'WARNING')
-                    update_health(self.REPL_FACTOR, repl_factor, 'CRITICAL')
-                    update_health(self.STOP_WRITES, 'false', 'CRITICAL')
-                    update_health(self.STOP_WRITES_PCT, stop_writes_pct, 'WARNING')
-                    update_health(self.SET_EVICTED_OBJECTS, set_evicted_objects, 'WARNING')
-                    update_health(self.TYPE, type, 'WARNING')
+                    update_health(self.HIGH_WATER_DISK_PCT, high_water_disk_pct, self.WARNING)
+    #                 update_health(self.HIGH_WATER_MEMEORY_PCT, high_water_memory_pct, self.WARNING)
+                    update_health(self.HWM_BREACHED, 'false', self.WARNING)
+                    update_health(self.MEMORY_SIZE, memory_size, self.WARNING)
+                    update_health(self.REPL_FACTOR, repl_factor, self.CRITICAL)
+                    update_health(self.STOP_WRITES, 'false', self.CRITICAL)
+                    update_health(self.STOP_WRITES_PCT, stop_writes_pct, self.WARNING)
+                    update_health(self.SET_EVICTED_OBJECTS, set_evicted_objects, self.WARNING)
+                    update_health(self.TYPE, _type, self.WARNING)
                     high_water_memory_pct = params.get(self.HIGH_WATER_MEMEORY_PCT)
                     min_avail_pct = params.get(self.MIN_AVAIL_PCT)
                     if high_water_memory_pct is not None:
@@ -504,18 +506,18 @@ class ShowHealthController(CommandController):
                         used_memory_pct = 100 - int(params[self.FREE_PCT_MEMORY])
                         hwm_warn_range = range(high_water_memory_pct - (high_water_memory_pct * self.HWM_WARN_CHECK_PCT / 100) , high_water_memory_pct)
                         if used_memory_pct >= high_water_memory_pct:
-                            health_params[self.HIGH_WATER_MEMEORY_PCT] = 'CRITICAL'
+                            health_params[self.HIGH_WATER_MEMEORY_PCT] = self.CRITICAL
                         elif high_water_memory_pct > 65 or used_memory_pct in hwm_warn_range:
-                            health_params[self.HIGH_WATER_MEMEORY_PCT] = 'WARNING'
+                            health_params[self.HIGH_WATER_MEMEORY_PCT] = self.WARNING
                     if min_avail_pct is not None:
                         min_avail_pct = int(min_avail_pct)
                         if min_avail_pct < 5:
-                                health_params[self.MIN_AVAIL_PCT] = 'CRITICAL'
+                                health_params[self.MIN_AVAIL_PCT] = self.CRITICAL
                         elif min_avail_pct <= 20 and min_avail_pct >= 5:
-                                health_params[self.MIN_AVAIL_PCT] = 'WARNING'
+                                health_params[self.MIN_AVAIL_PCT] = self.WARNING
                     namespaces_health[ns][ip] = health_params
-            for _ip, _params in namespaces_health[ns].items():
-                for broken_ip, broken_param in broken.items():
+            for _params in namespaces_health[ns].values():
+                for broken_param in broken.values():
                     for param, status in broken_param.items():
                         _params[param] = status
         return namespaces_health
@@ -552,7 +554,7 @@ class ShowHealthController(CommandController):
             for param in params.split(';'):
                 context_info =  param.rsplit(':', 1)
                 if context_info[1] != 'INFO':
-                    context_dict[KEY_NAME] = 'WARNING'
+                    context_dict[KEY_NAME] = self.WARNING
                     context_missing[context_info[0]] = context_info[1]
             log_health[ip]= context_dict
             log_health_missing[ip] = context_missing
@@ -570,6 +572,7 @@ class ShowHealthController(CommandController):
 #         print health_missing
 
     def get_network_health(self, network_config = None):
+        broken = {}
         network_health = dict()
         is_first = True
         for ip, params in network_config.items():
@@ -583,11 +586,17 @@ class ShowHealthController(CommandController):
                     is_first = False
                 def update_health(param, comparator, result):
                     if params.get(param) != comparator:
-                        health_params[param] = result
-                update_health(self.HEARTBEAT_INTERVAL, heartbeat_interval, 'CRITICAL')
-                update_health(self.HEARTBEAT_TIMEOUT, heartbeat_timeout, 'CRITICAL')
-                update_health(self.PROTO_FD_MAX, proto_fd_max, 'CRITICAL')
+                        if ip not in broken:
+                            broken[ip] = {}
+                        broken[ip][param] =  result
+                update_health(self.HEARTBEAT_INTERVAL, heartbeat_interval, self.CRITICAL)
+                update_health(self.HEARTBEAT_TIMEOUT, heartbeat_timeout, self.CRITICAL)
+                update_health(self.PROTO_FD_MAX, proto_fd_max, self.CRITICAL)
                 network_health[ip] = health_params
+        for _params in network_health.values():
+            for broken_param in broken.values():
+                for param, status in broken_param.items():
+                    _params[param] = status
         return network_health
 
     @CommandHelp('Displays Network health of cluster')
