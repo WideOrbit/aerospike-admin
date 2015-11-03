@@ -22,20 +22,18 @@ import re
 import argparse
 import getpass
 import shlex
-from lib import citrusleaf
-from lib.controller import *
-from lib import terminal
+from lib import citrusleaf, cluster_ctrl, grepper_ctrl
+from lib import terminal, common
+from lib.controllerlib import ShellException
 
 __version__ = '$$__version__$$'
 
 class AerospikeShell(cmd.Cmd):
-    def __init__(self, seed, telnet, user=None, password=None, log_path=""):
+    def __init__(self, name, intro, root_ctrl):
         cmd.Cmd.__init__(self)
 
-        self.ctrl = RootController(seed_nodes=[seed]
-                                   , use_telnet=telnet
-                                   , user=user
-                                   , password=password, log_path=log_path)
+        self.ctrl = root_ctrl
+
         try:
             readline.read_history_file(ADMINHIST)
         except Exception, i:
@@ -47,13 +45,9 @@ class AerospikeShell(cmd.Cmd):
                           self.prompt + "\001" +\
                           terminal.unbold() + terminal.fg_clear() + "\002"
 
-        self.name = 'Aerospike Interactive Shell'
-        self.intro = terminal.bold() + self.name + ', version ' +\
-                     __version__ + terminal.reset() + "\n"
-        if(log_path):
-            self.intro += str(self.ctrl.logger) + "\n"
-        else:
-            self.intro += str(self.ctrl.cluster) + "\n"
+        self.name = name
+        self.intro = intro
+
         self.commands = set()
 
         regex = re.compile("^do_(.*)$")
@@ -283,7 +277,6 @@ def main():
         exit(0)
 
     if cli_args.no_color:
-        from lib import terminal
         terminal.enable_color(False)
 
     user = None
@@ -303,13 +296,30 @@ def main():
 
     seed = (cli_args.host, cli_args.port)
     telnet = False # telnet currently not working, hardcoding to off
+
     log_path = ""
-    if(cli_args.log_path):
+    if cli_args.log_path:
         log_path = cli_args.log_path
-    shell = AerospikeShell(seed, telnet, user=user, password=password, log_path=log_path)
+        from lib import grepper, grepper_ctrl
+        common.grepper = grepper.Grepper(log_path)
+        root_ctrl = grepper_ctrl.RootController()
+    else:
+        from lib import cluster, cluster_ctrl
+        common.cluster = cluster.Cluster([seed], telnet, user, password)
+        root_ctrl = cluster_ctrl.RootController()
+
+    name = 'Aerospike Interactive Shell'
+    intro = terminal.bold() + name + ', version ' +\
+                 __version__ + terminal.reset() + "\n"
+    if log_path:
+        intro += str(common.grepper) + "\n"
+    else:
+        intro += str(common.cluster) + "\n"
+
+    shell = AerospikeShell(name, intro, root_ctrl)
 
     use_yappi = False
-    if cli_args.profile:
+    if cli_args. profile:
         try:
             import yappi
             use_yappi = True

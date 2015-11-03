@@ -1,9 +1,23 @@
+# Copyright 2013-2014 Aerospike, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http:#www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import copy
+from lib.logreader import LogReader
 
 __author__ = 'aerospike'
 
-from lib.logreader import LogReader
-class Logger(object):
+class Grepper(object):
     logInfo = {}
 
     def __init__(self, log_path):
@@ -11,8 +25,8 @@ class Logger(object):
         self.log_reader = LogReader(log_path)
 
     def __str__(self):
-        files = self.log_reader.getFiles(True);
-        retval =""
+        files = self.log_reader.getFiles(True)
+        retval = ""
 
         for file in sorted(files):
             nodes = self.log_reader.getNodes(file)
@@ -23,19 +37,19 @@ class Logger(object):
 
         return retval
 
-    def infoGetConfig(self, stanza = ""):
+    def infoGetConfig(self, stanza=""):
         resDic = {}
-        files = self.log_reader.getFiles(True);
+        files = self.log_reader.getFiles(True)
 
         for file in sorted(files):
-            if(not self.logInfo.has_key(file)):
+            if not self.logInfo.has_key(file):
                 self.logInfo[file] = self.log_reader.read(file)
 
-            if (stanza == "service"):
+            if stanza == "service":
                 resDic[file] = copy.deepcopy(self.logInfo[file]["config"]["service"])
-            elif (stanza == "network"):
+            elif stanza == "network":
                 resDic[file] = copy.deepcopy(self.logInfo[file]["config"]["network"])
-            elif (stanza == "namespace"):
+            elif stanza == "namespace":
                 resDic[file] = copy.deepcopy(self.logInfo[file]["config"]["namespace"])
 
         return resDic
@@ -45,7 +59,7 @@ class Logger(object):
         files = self.log_reader.getFiles(True);
 
         for file in sorted(files):
-            if(not self.logInfo.has_key(file)):
+            if not self.logInfo.has_key(file):
                 self.logInfo[file] = self.log_reader.read(file)
 
             if (stanza == "service"):
@@ -62,9 +76,9 @@ class Logger(object):
     def grep(self,search_str, grep_cluster_logs):
         files = []
         if(grep_cluster_logs):
-            files = self.log_reader.getFiles(True);
+            files = self.log_reader.getFiles(True)
         else:
-            files = self.log_reader.getFiles(False);
+            files = self.log_reader.getFiles(False)
 
         grepRes = {}
 
@@ -76,9 +90,9 @@ class Logger(object):
     def grepCount(self,search_str, grep_cluster_logs):
         files = []
         if(grep_cluster_logs):
-            files = self.log_reader.getFiles(True);
+            files = self.log_reader.getFiles(True)
         else:
-            files = self.log_reader.getFiles(False);
+            files = self.log_reader.getFiles(False)
 
         grepRes = {}
 
@@ -90,9 +104,9 @@ class Logger(object):
     def grepLatency(self,search_str, grep_cluster_logs):
         files = []
         if(grep_cluster_logs):
-            files = self.log_reader.getFiles(True);
+            files = self.log_reader.getFiles(True)
         else:
-            files = self.log_reader.getFiles(False);
+            files = self.log_reader.getFiles(False)
 
         grepRes = {}
 
@@ -100,5 +114,4 @@ class Logger(object):
             grepRes[file] = self.log_reader.grepLatency(search_str, file)
 
         return grepRes
-
 
